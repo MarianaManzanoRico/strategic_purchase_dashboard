@@ -41,7 +41,7 @@ def limpiar_datos(Ventas, Clientes, Ramo, Productos):
 
     LUBCEN = Ventas[
         (Ventas['ClFac'] != 'S2') & (Ventas['ClFac'] != 'ZDP') &
-        (~Ventas['UM'].isin(['CUN', 'L', 'BOT', 'PZA', 'GA'])) & (Ventas['An'] != 'X')
+        (~Ventas['UM'].isin(['CUN', 'BOT', 'PZA', 'GA'])) & (Ventas['An'] != 'X')
     ][['Fecha', 'Factura', 'SubTotal1', 'OrgVt', 'Solicitante', 'SKU', 'Producto', 'CtdFacturada', 'UM', 'Volumen']]
 
     Clientes = Clientes.drop_duplicates()
@@ -86,10 +86,10 @@ def clasificar_modelos(LUBCEN):
     pedido['Pct_Acum'] = pedido.groupby('OrgVt', observed=True)['Pct_Volumen'].cumsum()
     pedido['Clase_ABC'] = pedido['Pct_Acum'].apply(lambda x: 'A' if x <= 0.8 else ('B' if x <= 0.95 else 'C'))
 
-    inicio_21 = ultimo_mes - pd.DateOffset(months=19)
+    inicio_21 = ultimo_mes - pd.DateOffset(months=23)
     df_21m = LUBCEN[LUBCEN['AñoMes'].between(inicio_21, ultimo_mes)]
     meses_consec = df_21m.groupby(['SKU', 'OrgVt'])['AñoMes'].nunique().reset_index()
-    meses_consec['Tipo_pronostico'] = meses_consec['AñoMes'].apply(lambda x: 'ST' if x == 20 else 'PM')
+    meses_consec['Tipo_pronostico'] = meses_consec['AñoMes'].apply(lambda x: 'ST' if x == 24 else 'PM')
 
     resultado = pedido.merge(meses_consec[['SKU', 'OrgVt', 'Tipo_pronostico']], on=['SKU', 'OrgVt'], how='left')
     return LUBCEN, resultado
@@ -98,20 +98,21 @@ def clasificar_modelos(LUBCEN):
 def calcular_inventario_optimo(LUBCEN, resultado):
     LUBCEN['Fecha'] = pd.to_datetime(LUBCEN['Fecha'])
     ventas = LUBCEN.groupby(['SKU', 'OrgVt', 'Fecha'], as_index=False)['Volumen'].sum()
-    fechas_completas = pd.DataFrame({'Fecha': pd.date_range(start='2023-01-01', end='2024-08-31')})
+    # fechas_completas = pd.DataFrame({'Fecha': pd.date_range(start='2023-01-01', end='2024-08-31')})
     list_rop = []
 
     for _, row in ventas[['SKU', 'OrgVt']].drop_duplicates().iterrows():
         df = ventas[(ventas['SKU'] == row['SKU']) & (ventas['OrgVt'] == row['OrgVt'])]
-        df = fechas_completas.merge(df, on='Fecha', how='left')
+        # df = fechas_completas.merge(df, on='Fecha', how='left')
         df['Volumen'].fillna(0, inplace=True)
         prom = df['Volumen'].mean()
+        Lt = prom * 10
         std = df['Volumen'].std(ddof=1)
-        rop = prom * 10 + 1.96 * std * np.sqrt(10)
+        rop = prom * 10 + 1.96 * std * np.sqrt(0)
         list_rop.append({
             'SKU': row['SKU'], 'OrgVt': row['OrgVt'],
             'Punto_Reorden': rop,
-            'Demanda_Diaria_Promedio': prom
+            'Demanda_LeadTime': Lt
         })
 
     df_rop = pd.DataFrame(list_rop)
@@ -149,7 +150,7 @@ def generar_pronosticos(LUBCEN, resultado):
             modelo = auto_arima(serie, seasonal=True, m=12, trace=False, stepwise=True)
             sarima = SARIMAX(serie, order=modelo.order, seasonal_order=modelo.seasonal_order)
             fitted = sarima.fit(disp=False)
-            forecast = fitted.get_forecast(steps=3).predicted_mean
+            forecast = fitted.get_forecast(steps=2).predicted_mean
             pronosticos.append({
                 'SKU': row['SKU'],
                 'OrgVt': row['OrgVt'],
