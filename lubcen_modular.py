@@ -86,10 +86,10 @@ def clasificar_modelos(LUBCEN):
     pedido['Pct_Acum'] = pedido.groupby('OrgVt', observed=True)['Pct_Volumen'].cumsum()
     pedido['Clase_ABC'] = pedido['Pct_Acum'].apply(lambda x: 'A' if x <= 0.8 else ('B' if x <= 0.95 else 'C'))
 
-    inicio_21 = ultimo_mes - pd.DateOffset(months=23)
+    inicio_21 = ultimo_mes - pd.DateOffset(months = 23)
     df_21m = LUBCEN[LUBCEN['AñoMes'].between(inicio_21, ultimo_mes)]
     meses_consec = df_21m.groupby(['SKU', 'OrgVt'])['AñoMes'].nunique().reset_index()
-    meses_consec['Tipo_pronostico'] = meses_consec['AñoMes'].apply(lambda x: 'ST' if x == 24 else 'PM')
+    meses_consec['Tipo_pronostico'] = meses_consec['AñoMes'].apply(lambda x: 'ST' if x == 20 else 'PM')
 
     resultado = pedido.merge(meses_consec[['SKU', 'OrgVt', 'Tipo_pronostico']], on=['SKU', 'OrgVt'], how='left')
     return LUBCEN, resultado
@@ -121,6 +121,7 @@ def calcular_inventario_optimo(LUBCEN, resultado):
 
 
 def generar_pronosticos(LUBCEN, resultado):
+    import math
     df_pm = resultado[resultado['Tipo_pronostico'] == 'PM'].copy()
     ventas_mensuales = LUBCEN.groupby(['SKU', 'OrgVt', pd.Grouper(key='Fecha', freq='M')])['Volumen'].sum().reset_index()
     ventas_pm = ventas_mensuales.merge(df_pm[['SKU', 'OrgVt']], on=['SKU', 'OrgVt'], how='inner')
@@ -154,7 +155,7 @@ def generar_pronosticos(LUBCEN, resultado):
             pronosticos.append({
                 'SKU': row['SKU'],
                 'OrgVt': row['OrgVt'],
-                'Volumen_pronosticado': round(forecast.iloc[1], 2)  # mes 2
+                'Volumen_pronosticado': math.ceil(forecast.iloc[1]) 
             })
         except:
             continue

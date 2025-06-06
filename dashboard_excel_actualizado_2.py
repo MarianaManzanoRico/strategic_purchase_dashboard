@@ -7,6 +7,7 @@ from lubcen_modular import limpiar_datos, clasificar_modelos, calcular_inventari
 import plotly.graph_objects as go
 import time
 import psutil
+import math
 
 @st.cache_data(show_spinner=False)
 def load_all_data(ventas_file, productos_file):
@@ -135,7 +136,7 @@ if ventas_file and productos_file:
         fig4 = px.bar(vol_por_um, x='UM', y='Volumen total', title="Volumen vendido por UM", color_discrete_sequence=["#0066B3"])
         st.plotly_chart(fig4, use_container_width=True)
 
-    # Recomendaciones
+        # Recomendaciones
     st.divider()
     st.subheader("Recomendaciones de compra")
     if inventarios_file:
@@ -146,20 +147,31 @@ if ventas_file and productos_file:
         inventario_df = pd.read_excel(inventarios_file)
         inventario_df['Material'] = inventario_df['Material'].astype(str)
         resultado['SKU'] = resultado['SKU'].astype(str)
+
         inventario_df = inventario_df.rename(columns={
             'Material': 'SKU',
             'Org Vtas': 'OrgVt'
         })
 
         merged = resultado.merge(
-            inventario_df[['Material', 'Org Vtas', 'Inventario Lts.']],
+            inventario_df[['SKU', 'OrgVt', 'Inventario Lts.']],
             on=['SKU', 'OrgVt'],
             how='left'
         )
         merged['Inventario Lts.'] = merged['Inventario Lts.'].fillna(0)
-        merged['Recomendaciones'] = merged['pronostico'] + merged['Punto_Reorden'] - merged['Inventario Lts.'] - merged['Demanda_LeadTime']
+        merged['Recomendaciones'] = (
+            merged['pronostico'] + 
+            merged['Punto_Reorden'] - 
+            merged['Inventario Lts.'] - 
+            merged['Demanda_LeadTime']
+        )
+        merged['Recomendaciones UM'] = (merged['Recomendaciones'] / merged['Presentacion'])     
+        merged = merged[(merged['Recomendaciones'] >= 0)]
 
-        st.dataframe(merged[['SKU', 'OrgVt', 'Producto', 'pronostico', 'Punto_Reorden', 'Inventario Lts.', 'Recomendaciones']], use_container_width=True)
+        st.dataframe(
+            merged[['SKU', 'OrgVt', 'Producto', 'pronostico', 'Punto_Reorden', 'Inventario Lts.', 'Recomendaciones', 'Recomendaciones UM', 'UM']],
+            use_container_width=True
+        )
 
     else:
         st.warning("Por favor sube el archivo de inventarios.")
